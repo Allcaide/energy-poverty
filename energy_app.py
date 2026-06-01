@@ -16,7 +16,7 @@ import streamlit as st
 
 # =============================================================================
 # SECTION 1: CONFIGURATION
-# Change the paths below if you move the data files.
+# Change the paths below in case of moving the data files.
 # =============================================================================
 
 # Path to the dataset (parquet format)
@@ -34,10 +34,6 @@ NON_METRIC_COLUMNS = {"ano", "distrito", "concelho", "concelho_limpo"}
 # Human-readable labels for each metric column.
 # This makes the selector easier to understand.
 METRIC_LABELS = {
-    "energia_ativa_kwh":      "Total Energy Consumption (kWh)",
-    "cpes":                   "Number of Households (CPEs)",
-    "kwh_por_cpe":            "Energy per Household (kWh/CPE)",
-    "Preco_Final":            "Electricity Price (EUR/kWh)",
     "annual_expenditure":     "Annual Energy Cost per Household (EUR)",
     "income":                 "Average Household Income (EUR)",
     "energy_expenditure_ratio": "Energy Expenditure Ratio — EER (%)",
@@ -80,8 +76,8 @@ df, geojson = load_data()
 # We automatically find which columns are metrics by excluding structural ones.
 # =============================================================================
 
-# Keep only columns that are not in our exclusion list
-metric_columns = [col for col in df.columns if col not in NON_METRIC_COLUMNS]
+# Keep only the 4 relevant metric columns (defined in METRIC_LABELS)
+metric_columns = [col for col in df.columns if col in METRIC_LABELS]
 
 # Build a reverse lookup: label → column name (used to recover the column name
 # after the user picks a human-readable label from the selectbox)
@@ -173,7 +169,7 @@ with col_map:
     # =========================================================================
     # SECTION 8: FILTER DATA FOR THE SELECTED YEAR
     # This is the core filter:
-    #   "Give me all rows where the year column equals the selected year"
+    #   "Give us all rows where the year column equals the selected year"
     # =========================================================================
 
     df_year = df[df["ano"] == selected_year].copy()
