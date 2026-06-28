@@ -9,23 +9,28 @@
 # =============================================================================
 
 import json
+import os
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+
+from ai_chat import get_installed_models, query_ollama
 
 # =============================================================================
 # SECTION 1: CONFIGURATION
 # Change the paths below in case of moving the data files.
 # =============================================================================
 
+_HERE = os.path.dirname(os.path.abspath(__file__))
+
 # Path to the dataset (parquet format)
-DATA_PATH = "Data_treatment/energy_vs_income.parquet"
+DATA_PATH = os.path.join(_HERE, "Data_treatment", "energy_vs_income.parquet")
 
 # Path to the GeoJSON file with municipality boundaries
 # Portugal_Municipalities.geojson includes mainland + islands (308 features).
 # We use properties.Concelho as the key to match municipalities.
-GEOJSON_PATH = "geojsons/Portugal_Municipalities.geojson"
+GEOJSON_PATH = os.path.join(_HERE, "geojsons", "Portugal_Municipalities.geojson")
 
 # These columns are geographic or structural — they should NOT appear in the
 # metric selector because they don't represent measurable indicators.
@@ -34,10 +39,13 @@ NON_METRIC_COLUMNS = {"ano", "distrito", "concelho", "concelho_limpo"}
 # Human-readable labels for each metric column.
 # This makes the selector easier to understand.
 METRIC_LABELS = {
-    "annual_expenditure":     "Annual Energy Cost per Household (EUR)",
-    "income":                 "Average Household Income (EUR)",
+    "annual_expenditure":       "Annual Energy Cost per Household (EUR)",
+    "income":                   "Average Household Income (EUR)",
     "energy_expenditure_ratio": "Energy Expenditure Ratio — EER (%)",
-    "energy_poverty":         "Energy Poverty Flag (1 = poor, 0 = not poor)",
+    "energy_poverty":           "Energy Poverty Flag (1 = poor, 0 = not poor)",
+    "median_age":               "Median Age (years)",
+    "age_weighted_eer":         "Age-Weighted EER (EER × Age)",
+    "energy_eff_index":         "Energy Efficiency Index (% bad classes D/E/F)",
 }
 
 # Streamlit page setup — must be the first Streamlit call in the script
@@ -108,6 +116,9 @@ if "last_year" not in st.session_state:
 
 if "map_mode" not in st.session_state:
     st.session_state.map_mode = "normal"
+
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
 # =============================================================================
 # SECTION 5: USER CONTROLS (title + metric selector + year slider)
@@ -260,7 +271,19 @@ with col_map:
         clicked_location = map_event.selection.points[0].get("location")
         if clicked_location:
             st.session_state.selected_municipality = clicked_location
-            
+
+    # ---- TOP 10 TABLE ----
+    st.markdown(f"**Top 10 Municipalities — {METRIC_LABELS.get(selected_metric, selected_metric)}**")
+    top10 = (
+        df_map[["concelho", color_column]]
+        .sort_values(by=color_column, ascending=False)
+        .head(10)
+        .reset_index(drop=True)
+    )
+    top10.index += 1
+    top10.columns = ["Municipality", METRIC_LABELS.get(selected_metric, selected_metric)]
+    st.dataframe(top10, use_container_width=True)
+
 # =============================================================================
 # SECTION 11: RIGHT PANEL — charts based on selection
 # If a municipality was clicked: show line charts per metric for that place.
@@ -326,7 +349,7 @@ with col_charts:
             .groupby("distrito")[metric_columns]
             .mean()
             .reset_index()
-            .sort_values(selected_metric, ascending=True)
+            .sort_values(by = selected_metric, ascending=False)
         )
 
         # Show one small bar chart per metric
@@ -354,3 +377,50 @@ with col_charts:
             fig_bar.update_yaxes(tickfont_size=9)
 
             st.plotly_chart(fig_bar, use_container_width=True)
+
+# =============================================================================
+# SECTION 12: AI CHAT — sidebar panel powered by a local Ollama model
+# =============================================================================
+
+with st.sidebar:
+    st.header("Ask AI")
+    st.caption("Ask questions about the dataset. The AI queries the data directly.")
+
+    installed_models = get_installed_models()
+
+    if not installed_models:
+        st.warning("No Ollama models found. Make sure the Ollama service is running and pull a model, e.g. `ollama pull qwen2.5:3b`.")
+    else:
+        st.caption("Tip: qwen2.5:3b gives the best text-to-SQL results among the small models.")
+        # Default to a model that performs well at text-to-SQL, if available.
+        preferred = ["qwen2.5:3b", "qwen2.5-coder:7b", "llama3.2:3b"]
+        default_idx = next((installed_models.index(m) for m in preferred if m in installed_models), 0)
+        selected_model = st.selectbox("Model:", installed_models, index=default_idx, key="ollama_model")
+
+        st.divider()
+
+        for msg in st.session_state.chat_history:
+            with st.chat_message(msg["role"]):
+                st.write(msg["content"])
+                if msg.get("code"):
+                    with st.expander("SQL query used", expanded=False):
+                        st.code(msg["code"], language="sql")
+                        if msg.get("raw_result"):
+                            st.text(msg["raw_result"])
+
+        if prompt := st.chat_input("Ask about the dataset...", key="ai_chat_input"):
+            st.session_state.chat_history.append({"role": "user", "content": prompt})
+            with st.spinner("Querying dataset..."):
+                explanation, code, raw_result = query_ollama(st.session_state.chat_history, selected_model, df)
+            st.session_state.chat_history.append({
+                "role": "assistant",
+                "content": explanation,
+                "code": code,
+                "raw_result": raw_result,
+            })
+            st.rerun()
+
+        if st.session_state.chat_history:
+            if st.button("Clear chat"):
+                st.session_state.chat_history = []
+                st.rerun()

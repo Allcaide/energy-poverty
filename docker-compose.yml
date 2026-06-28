@@ -1,0 +1,25 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      # Persist pulled models so they are not re-downloaded on every restart.
+      - ollama_models:/root/.ollama
+
+  app:
+    build: .
+    ports:
+      # Host 8502 -> container 8501 (8501 is often taken by a local streamlit).
+      - "8502:8501"
+    environment:
+      # Talk to the Ollama container by its service name.
+      - OLLAMA_HOST=http://ollama:11434
+    depends_on:
+      - ollama
+    volumes:
+      # Live-edit ai_feedback.md without rebuilding the image.
+      - ./ai_feedback.md:/app/ai_feedback.md
+
+volumes:
+  ollama_models:
