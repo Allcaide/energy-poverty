@@ -18,8 +18,8 @@ services:
     depends_on:
       - ollama
     volumes:
-      # Live-edit ai_feedback.md without rebuilding the image.
-      - ./ai_feedback.md:/app/ai_feedback.md
+      # Mount entire project directory so chat_log.jsonl and ai_feedback.md persist.
+      - .:/app
 
 volumes:
   ollama_models:

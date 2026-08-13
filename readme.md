@@ -43,6 +43,8 @@ flowchart TD
                 E4["Ollama explains result"]
             end
             E5[/"ai_feedback.md\neditable rules"/]
+            E6["chat_log.jsonl\ninteraction log"]
+            E7["Suggest guidance\nauto-improve prompts"]
         end
         F1["app container · port 8502"]
         F2["ollama container · port 11434\nqwen2.5:3b"]
@@ -59,6 +61,8 @@ flowchart TD
 
     E1 --> E2 --> E3 --> E4 --> E1
     E5 --> E2
+    E1 --> E6
+    E6 --> E7 --> E5
 
     F1 -- "http://ollama:11434" --> F2
 ```
@@ -131,6 +135,24 @@ just edit `ai_feedback.md` and add an example. It's re-read on every question, s
 the change takes effect right away, no rebuild needed. Only someone with access
 to the file can change it, so app users can't mess with the rules.
 
+### Auto-improve guidance (NEW!)
+
+Every chat interaction is logged to `chat_log.jsonl` — this captures questions,
+SQL generated, and whether they succeeded or failed. Click the **"Suggest guidance"**
+button (next to "Clear chat") to let the AI analyze the log and suggest new GOOD/BAD
+examples to add to `ai_feedback.md`.
+
+When you click "Suggest guidance":
+
+1. The AI reads all recent chats from the log.
+2. It suggests new Q→SQL pairs (GOOD examples) based on what it saw work.
+3. It suggests new Q patterns to refuse (BAD examples) based on failures/out-of-scope questions.
+4. You get an editable text area where you can tweak the suggestions.
+5. **View Database** button lets you see the dataset while editing (for context).
+6. Click "Append to ai_feedback.md" to accept the suggestions.
+
+The new examples take effect on the very next question — no rebuild needed.
+
 ---
 
 ## Refreshing the data (optional)
@@ -152,7 +174,9 @@ separate from the Docker setup.)
 energy-poverty/
 ├── energy_app.py                       # Streamlit app (main entry point)
 ├── ai_chat.py                          # AI assistant: question → SQL → answer
+│                                       # + logging & guidance generation
 ├── ai_feedback.md                      # Examples that guide the AI (edit freely)
+├── chat_log.jsonl                      # All chat interactions (auto-logged, gitignored)
 ├── Dockerfile                          # Builds the app container
 ├── docker-compose.yml                  # Runs the app + ollama containers
 ├── requirements.txt                    # Python deps (installed inside the image)

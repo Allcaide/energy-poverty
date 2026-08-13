@@ -15,7 +15,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from ai_chat import get_installed_models, query_ollama
+from ai_chat import get_installed_models, query_ollama, suggest_guidance_updates
 
 # =============================================================================
 # SECTION 1: CONFIGURATION
@@ -119,6 +119,12 @@ if "map_mode" not in st.session_state:
 
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
+
+if "show_guidance_dialog" not in st.session_state:
+    st.session_state.show_guidance_dialog = False
+
+if "show_db_modal" not in st.session_state:
+    st.session_state.show_db_modal = False
 
 # =============================================================================
 # SECTION 5: USER CONTROLS (title + metric selector + year slider)
@@ -421,6 +427,52 @@ with st.sidebar:
             st.rerun()
 
         if st.session_state.chat_history:
-            if st.button("Clear chat"):
-                st.session_state.chat_history = []
-                st.rerun()
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Clear chat"):
+                    st.session_state.chat_history = []
+                    st.rerun()
+            with col2:
+                if st.button("Suggest guidance"):
+                    st.session_state.show_guidance_dialog = True
+
+        st.divider()
+        if st.session_state.get("show_guidance_dialog"):
+            st.subheader("Suggest guidance updates")
+            st.caption("Analyzing chat log to suggest new GOOD/BAD examples...")
+            with st.spinner("Generating suggestions..."):
+                suggestions = suggest_guidance_updates(selected_model)
+            if suggestions:
+                st.write("**Suggested additions to ai_feedback.md:**")
+                suggested_text = st.text_area("Review and edit before appending:", suggestions, height=300, key="guidance_textarea")
+                
+                col_button1, col_button2 = st.columns(2)
+                with col_button1:
+                    if st.button("Append to ai_feedback.md"):
+                        try:
+                            with open(os.path.join(os.path.dirname(__file__), "ai_feedback.md"), "a", encoding="utf-8") as f:
+                                f.write("\n" + suggested_text + "\n")
+                            st.success("✓ Appended to ai_feedback.md. New guidance will take effect on the next question.")
+                            st.session_state.show_guidance_dialog = False
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Failed to write to ai_feedback.md: {e}")
+                with col_button2:
+                    if st.button("📊 View Database"):
+                        st.session_state.show_db_modal = True
+                
+                if st.session_state.get("show_db_modal"):
+                    st.divider()
+                    col_modal_title, col_modal_close = st.columns([0.95, 0.05])
+                    with col_modal_title:
+                        st.subheader("Dataset (scrollable)")
+                    with col_modal_close:
+                        if st.button("✕", key="close_db_modal"):
+                            st.session_state.show_db_modal = False
+                            st.rerun()
+                    st.dataframe(df, use_container_width=True, height=500)
+            else:
+                st.info("No suggestions at this time. Try asking more questions to build up the log.")
+                if st.button("Close"):
+                    st.session_state.show_guidance_dialog = False
+                    st.rerun()
